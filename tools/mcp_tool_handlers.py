@@ -667,13 +667,35 @@ _make_get_prompt_handler = _make_utility_handler(
 
 
 def _make_check_fn(server_name: str):
-    """Connection-alive check; lazy (schema-cache registered) servers count as available."""
+    """Connection-alive check; lazy (schema-cache registered) servers count as available.
+
+    When the server's owner registered an application declaration (`requires.app`), the
+    application must also be present on this host, or the tools are not offered even while a
+    stale connection lingers. With no declaration registered the check is the connection check
+    alone. Returns a plain bool: the registry caches ``bool(fn())``.
+    """
     from tools.mcp_tool_scope import _resolve_server_key
 
-    def _check() -> bool:
+    def _connected() -> bool:
         with _core._lock:
             key = _resolve_server_key(server_name)
             server = _core._servers.get(key)
             return ((server is not None and (server.session is not None or server._is_recycled_stdio()))
                     or key in _core._lazy_server_configs)
+
+    def _check() -> bool:
+        if not _connected():
+            return False
+        return _declared_app_offerable(server_name)
     return _check
+
+
+def _declared_app_offerable(server_name: str) -> bool:
+    """True unless a declaration registered for this server requires an application this host lacks."""
+    from hermes_platform import declaration
+    from hermes_platform.resolver.availability import availability
+
+    decl = declaration.lookup(server_name)
+    if decl is None or not decl.requires_app:
+        return True
+    return availability(decl).offerable
