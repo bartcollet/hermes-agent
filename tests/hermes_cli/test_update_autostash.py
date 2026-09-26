@@ -12,12 +12,11 @@ from datetime import UTC
 
 
 @pytest.mark.parametrize('history,failure,keep', [
-    ('ordinary', None, False), ('ordinary', None, True),
-    ('ordinary', 'reset', False), ('ordinary', 'reset', True),
+    ('local', None, False), ('local', None, True), ('local', 'merge', False),
     ('orphan', None, False), ('orphan', 'reset', False),
     ('orphan', 'ref', False), ('orphan', 'head', False),
 ])
-def test_update_preserves_local_work_and_rescues_orphan_before_reset(
+def test_update_merges_local_commits_and_rescues_orphan_before_reset(
     update_tree, monkeypatch, capsys, history, failure, keep,
 ):
     t = update_tree
@@ -44,7 +43,8 @@ def test_update_preserves_local_work_and_rescues_orphan_before_reset(
                             check=True, capture_output=True, text=True).stdout.split()
             assert refs == ([before] if failure not in {'ref', 'head'} else [])
             resets.append(command)
-        if ((failure == 'ref' and 'update-ref' in command and '-d' not in command)
+        if ((failure == 'merge' and 'merge' in command and '--no-edit' in command)
+                or (failure == 'ref' and 'update-ref' in command and '-d' not in command)
                 or (failure == 'reset' and 'reset' in command and '--hard' in command)):
             return subprocess.CompletedProcess(command, 128, stdout='', stderr='fixture I/O refusal')
         return original(command, *args, **kwargs)
@@ -52,7 +52,7 @@ def test_update_preserves_local_work_and_rescues_orphan_before_reset(
     monkeypatch.setattr(subprocess, 'run', fault)
     if failure == 'head':
         monkeypatch.setattr(update_cmd, '_capture_head_sha', lambda *_: None)
-    if failure == 'reset':
+    if failure in {'merge', 'reset'}:
         with pytest.raises(SystemExit) as error:
             hermes_main.cmd_update(t.args)
         assert error.value.code == 1
@@ -62,24 +62,32 @@ def test_update_preserves_local_work_and_rescues_orphan_before_reset(
     else:
         hermes_main.cmd_update(t.args)
         assert len(t.requests) == 1
-        assert git(t.clone, 'rev-parse', 'HEAD') == t.newer
+        if history == 'local':
+            # #113940: local commits ahead of origin survive as a merge, not a reset.
+            parents = git(t.clone, 'log', '-1', '--format=%P').split()
+            assert len(parents) == 2 and before in parents and t.newer in parents
+            assert (t.clone / 'local.txt').read_text(encoding='utf-8') == 'committed\n'
+        else:
+            assert git(t.clone, 'rev-parse', 'HEAD') == t.newer
         assert (t.clone / 'untracked.txt').exists() is (not keep)
-    assert len(resets) == 1
+    assert len(resets) == (0 if history == 'local' else 1)
     stashes = git(t.clone, 'stash', 'list')
-    assert bool(stashes) is (keep or failure == 'reset')
+    assert bool(stashes) is (keep or failure in {'merge', 'reset'})
     if stashes:
         assert git(t.clone, 'show', 'stash@{0}^3:untracked.txt') == 'local edit'
     output = capsys.readouterr().out
     if failure == 'ref':
         assert 'backup write failed' in output and 'backed up current HEAD' not in output
+    if failure == 'merge':
+        assert 'Merge conflict between local commits and upstream' in output
     if failure == 'reset':
         assert 'preserved in stash' in output
-    if failure not in {'ref', 'head'}:
+    if history == 'local':
+        assert 'merging instead of resetting so they survive' in output
+        assert 'refs/hermes-update-backups/' not in output
+    elif failure not in {'ref', 'head'}:
         assert f'expires after {update_cmd._ORPHAN_RESCUE_REF_MAX_AGE_DAYS} days' in output
-        kind = 'orphan' if history == 'orphan' else 'diverged'
-        assert f'refs/hermes-update-backups/{kind}-main-' in output
-        if kind == 'diverged':
-            assert 'commit(s) not on origin/main leave the branch' in output
+        assert 'refs/hermes-update-backups/orphan-main-' in output
 
 
 @pytest.mark.parametrize('mode', ['count', 'age', 'unparseable'])
