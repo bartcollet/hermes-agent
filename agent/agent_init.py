@@ -1437,6 +1437,20 @@ def _apply_agent_section(agent, _agent_cfg):
     except (TypeError, ValueError):
         _api_retries = 3
     agent._api_max_retries = _api_retries
+    # Mid-turn primary restore window (agent/mid_turn_restore.py): seconds a
+    # TRANSIENT failover (connection error / timeout / 5xx) rides out the turn
+    # on the fallback runtime before the primary is re-attempted before an API
+    # call. Billing/rate-limit/entitlement activations never re-attempt. 0 =
+    # legacy (restore only at the start of the next turn).
+    from agent.mid_turn_restore import DEFAULT_MID_TURN_RESTORE_SECONDS
+    try:
+        agent._mid_turn_restore_seconds = max(
+            int(_cfg_dict(_agent_cfg, "fallback").get(
+                "mid_turn_restore_seconds", DEFAULT_MID_TURN_RESTORE_SECONDS)),
+            0,
+        )
+    except (TypeError, ValueError):
+        agent._mid_turn_restore_seconds = DEFAULT_MID_TURN_RESTORE_SECONDS
     # Bounded post-exhaustion auto-recovery cycles once retries AND the fallback chain are spent
     # on a transient outage (agent/turn_recovery_autorecover.py). 0 disables the ladder.
     try:
