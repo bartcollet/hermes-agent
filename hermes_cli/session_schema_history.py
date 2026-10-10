@@ -213,6 +213,7 @@ SCHEMA_HISTORY: dict[str, _TableHistory] = {
             ('+', 'runtime_revision', 'id'),
             ('+', 'runtime_generation', 'runtime_revision'),
         )),
+        ('32 2026-10-10T10:02Z 43df4b12a11', (('+', 'list_price_equiv_usd', 'actual_cost_usd'),)),
         ),
     ),
     "messages": _TableHistory(
@@ -269,6 +270,7 @@ SCHEMA_HISTORY: dict[str, _TableHistory] = {
             ('+', 'cost_source', 'cost_status'),
         )),
         ('02 2026-07-16T11:23Z eb6aa03609', (('+', 'task', 'billing_mode'),)),
+        ('03 2026-10-10T10:02Z 43df4b12a11', (('+', 'list_price_equiv_usd', 'actual_cost_usd'),)),
         ),
     ),
 }
