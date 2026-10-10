@@ -33,7 +33,7 @@ BOOTSTRAP_FIELDS = {'version', 'home', 'scope', 'policy', 'api_key', 'text', 'ro
 RESULT_FIELDS = ('final_response', 'failed', 'interrupted', 'completed', 'partial', 'error', 'turn_exit_reason',
                  'api_calls', 'model', 'provider', 'prompt_tokens', 'completion_tokens', 'total_tokens',
                  'cache_read_tokens', 'cache_write_tokens', 'reasoning_tokens',
-                 'estimated_cost_usd', 'cost_status', 'cost_source', 'service_tier', 'failure_reason',
+                 'estimated_cost_usd', 'list_price_equiv_usd', 'cost_status', 'cost_source', 'service_tier', 'failure_reason',
                  'session_id', 'requested_model', 'served_model', '_turn_input_tokens', '_turn_output_tokens')
 
 
