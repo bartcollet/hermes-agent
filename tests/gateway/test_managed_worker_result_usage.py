@@ -16,7 +16,7 @@ def _run_conversation_result():
             'model': 'm', 'provider': 'custom', 'base_url': 'http://127.0.0.1:9/v1',
             'input_tokens': 18, 'output_tokens': 10, 'cache_read_tokens': 2, 'cache_write_tokens': 0,
             'reasoning_tokens': 0, 'prompt_tokens': 20, 'completion_tokens': 10, 'total_tokens': 30,
-            'last_prompt_tokens': 10, 'estimated_cost_usd': 0.0125, 'cost_status': 'estimated',
+            'last_prompt_tokens': 10, 'estimated_cost_usd': 0.0125, 'list_price_equiv_usd': 0.0, 'cost_status': 'estimated',
             'cost_source': 'catalog', 'service_tier': None, 'session_id': 'worker-session',
             'error': 'x' * 10000}
 

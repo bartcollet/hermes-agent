@@ -634,7 +634,7 @@ def _worker_usage(db, conn, session_id, payload, *, auxiliary=False):
     for key, value in payload.items():
         if key in (*_TOKEN_COUNTERS, 'api_call_count'):
             valid = type(value) is int and 0 <= value <= 2**53
-        elif key in ('estimated_cost_usd', 'actual_cost_usd'):
+        elif key in ('estimated_cost_usd', 'actual_cost_usd', 'list_price_equiv_usd'):
             valid = value is None or (type(value) in (int, float) and 0 <= value <= 1e12)
         elif key == 'absolute':
             valid = type(value) is bool

@@ -383,7 +383,7 @@ def _make_synthetic_lost_and_found(
     # The floor guards against accidentally reading an empty/old schema.
     current_width = len(sessions_columns)
     assert current_width >= 55
-    assert len(usage_columns) == 18
+    assert len(usage_columns) == 19
 
     max_fields = current_width
     conn = sqlite3.connect(str(path), isolation_level=None)
