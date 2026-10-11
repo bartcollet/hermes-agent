@@ -46,7 +46,18 @@ def _probe_launchd_domain_for_label(label: str) -> str:
         except launchctl_errors:
             pass
 
-    # Not loaded anywhere: Aqua → gui/<uid>; anything else (Background, loginwindow) → user/<uid>,
+    # Not loaded anywhere. LOCAL PATCH (t_c16eeffc): when the user's GUI (Aqua) domain exists, load there even if
+    # THIS process is not Aqua (a kanban worker, SSH, a detached helper). A gateway loaded in user/<uid> runs in the
+    # Background session, where the login keychain secret is unreadable (errSecInteractionNotAllowed, `security`
+    # rc=36), so every Claude Code login is invisible to the workers it spawns (`claude auth status` →
+    # loggedIn:false). Headless hosts with no GUI login have no gui/<uid> domain and fall through unchanged.
+    try:
+        subprocess.run(["launchctl", "print", gui_domain], check=True, timeout=5, capture_output=True)
+        return gui_domain
+    except launchctl_errors:
+        pass
+
+    # No GUI domain: Aqua → gui/<uid>; anything else (Background, loginwindow) → user/<uid>,
     # the pre-probing default and the recommended domain on macOS 26+.
     try:
         result = subprocess.run(["launchctl", "managername"], timeout=5, **_gw()._CAPTURE_TEXT, check=False)
