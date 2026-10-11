@@ -184,6 +184,36 @@ class TestProbeLaunchdDomainForLabel:
         monkeypatch.setattr(gw.subprocess, "run", fake_run)
         assert _probe_launchd_domain_for_label("ai.hermes.gateway-x") == f"user/{UID}"
 
+    def test_unloaded_label_prefers_existing_gui_domain_from_a_background_caller(self, monkeypatch):
+        """A non-Aqua caller (kanban worker, SSH) must not land the gateway in user/<uid>: that Background
+        session cannot read the login keychain, so subscription-login plugins see "logged out"."""
+
+        def fake_run(cmd, **kwargs):
+            if cmd == ["launchctl", "print", f"gui/{UID}"]:
+                return _completed(0, "")
+            if cmd[:2] == ["launchctl", "print"]:
+                raise subprocess.CalledProcessError(113, cmd)
+            if cmd == ["launchctl", "managername"]:
+                return _completed(0, "Background\n")
+            raise AssertionError(f"unexpected command {cmd}")
+
+        monkeypatch.setattr(gw.subprocess, "run", fake_run)
+        assert _probe_launchd_domain_for_label("ai.hermes.gateway-x") == f"gui/{UID}"
+
+    def test_label_already_loaded_in_user_domain_is_left_there(self, monkeypatch):
+        """The GUI preference only applies to an unloaded label; a loaded one keeps its domain so
+        start/stop/restart keep addressing the live job."""
+
+        def fake_run(cmd, **kwargs):
+            if cmd == ["launchctl", "print", f"user/{UID}/ai.hermes.gateway-x"]:
+                return _completed(0, "")
+            if cmd[:2] == ["launchctl", "print"]:
+                raise subprocess.CalledProcessError(113, cmd)
+            raise AssertionError(f"unexpected command {cmd}")
+
+        monkeypatch.setattr(gw.subprocess, "run", fake_run)
+        assert _probe_launchd_domain_for_label("ai.hermes.gateway-x") == f"user/{UID}"
+
 
 class TestGetServicePidsScoping:
     def _wire(self, monkeypatch):
