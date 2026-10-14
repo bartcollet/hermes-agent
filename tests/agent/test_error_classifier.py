@@ -1,5 +1,6 @@
 """Tests for agent.error_classifier — structured API error classification."""
 
+import datetime as _dt
 from types import SimpleNamespace
 
 import pytest
@@ -2159,3 +2160,63 @@ class TestStreamingRenderFormatError:
         e = MockAPIError("Error rendering prompt with jinja template: ...", status_code=500)
         result = classify_api_error(e, provider="lm-studio", model="x")
         assert result.reason != FailoverReason.format_error
+
+
+# ── Anthropic org spend limit (HTTP 400 "specified API usage limits") ──────
+
+def _spend_limit_msg(when):
+    return (
+        "You have reached your specified API usage limits. "
+        f"You will regain access on {when:%Y-%m-%d} at {when:%H:%M} UTC."
+    )
+
+
+# Dynamic future instant (the parser ignores past times), minute precision.
+_FUTURE_RESET = (_dt.datetime.now(_dt.UTC) + _dt.timedelta(days=30)).replace(second=0, microsecond=0)
+_SPEND_LIMIT_MSG = _spend_limit_msg(_FUTURE_RESET)
+
+
+def _anthropic_body(message):
+    return {"type": "error", "error": {"type": "invalid_request_error", "message": message}}
+
+
+class TestAnthropicSpendLimit400:
+    def test_400_spend_limit_is_confirmed_billing_with_reset_at(self):
+        e = MockAPIError(_SPEND_LIMIT_MSG, status_code=400, body=_anthropic_body(_SPEND_LIMIT_MSG))
+        result = classify_api_error(e, provider="anthropic", model="claude-sonnet-5-5")
+        assert result.reason == FailoverReason.billing
+        assert result.should_fallback is True
+        assert result.should_rotate_credential is True
+        assert result.error_context.get("billing_unverified") is not True
+        assert result.error_context["reset_at"] == int(_FUTURE_RESET.timestamp())
+
+    def test_400_spend_limit_past_reset_is_billing_without_reset_at(self):
+        msg = _spend_limit_msg(_dt.datetime(2020, 1, 1, tzinfo=_dt.UTC))
+        e = MockAPIError(msg, status_code=400, body=_anthropic_body(msg))
+        result = classify_api_error(e, provider="anthropic", model="claude-sonnet-5-5")
+        assert result.reason == FailoverReason.billing
+        assert "reset_at" not in result.error_context
+
+    def test_400_spend_limit_unparseable_reset_is_still_billing_without_reset_at(self):
+        msg = "You have reached your specified API usage limits. You will regain access soon."
+        e = MockAPIError(msg, status_code=400, body=_anthropic_body(msg))
+        result = classify_api_error(e, provider="anthropic", model="claude-sonnet-5-5")
+        assert result.reason == FailoverReason.billing
+        assert "reset_at" not in result.error_context
+
+    def test_429_spend_limit_stays_billing(self):
+        e = MockAPIError(_SPEND_LIMIT_MSG, status_code=429, body=_anthropic_body(_SPEND_LIMIT_MSG))
+        result = classify_api_error(e, provider="anthropic", model="claude-sonnet-5-5")
+        assert result.reason == FailoverReason.billing
+
+    def test_400_credit_balance_too_low_stays_billing(self):
+        msg = "Your credit balance is too low to access the Anthropic API."
+        e = MockAPIError(msg, status_code=400, body=_anthropic_body(msg))
+        result = classify_api_error(e, provider="anthropic", model="claude-sonnet-5-5")
+        assert result.reason == FailoverReason.billing
+
+    def test_unrelated_invalid_request_400_stays_format_error(self):
+        msg = "messages.0.content: Input should be a valid list of blocks"
+        e = MockAPIError(msg, status_code=400, body=_anthropic_body(msg))
+        result = classify_api_error(e, provider="anthropic", model="claude-sonnet-5-5")
+        assert result.reason == FailoverReason.format_error

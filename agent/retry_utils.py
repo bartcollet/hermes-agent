@@ -79,6 +79,30 @@ _RETRY_AFTER_SECONDS_RE = re.compile(r"retry\s+(?:after\s+)?(\d+(?:\.\d+)?)\s*(?
 _RESETS_IN_SECONDS_FIELD_RE = re.compile(r"resets_in_seconds\W{1,4}(\d+(?:\.\d+)?)", re.IGNORECASE)
 
 
+# Anthropic org spend limit: "You will regain access on 2026-11-01 at 00:00 UTC."
+_REGAIN_ACCESS_AT_RE = re.compile(
+    r"regain\s+access\s+on\s+(\d{4})-(\d{2})-(\d{2})\s+at\s+(\d{1,2}):(\d{2})\s+utc", re.IGNORECASE,
+)
+
+
+def regain_access_at_from_message(message: str) -> Optional[float]:
+    """Epoch seconds of the "regain access on YYYY-MM-DD at HH:MM UTC" instant; None when
+    absent, invalid or already past (callers then keep the normal billing bench)."""
+    m = _REGAIN_ACCESS_AT_RE.search(message or "")
+    if m is None:
+        return None
+    try:
+        when = datetime(*(int(g) for g in m.groups()), tzinfo=UTC)
+    except ValueError:
+        return None
+    return when.timestamp() if when > datetime.now(UTC) else None
+
+
+def _regain_access_seconds(m: re.Match[str]) -> Optional[float]:
+    at = regain_access_at_from_message(m.group(0))
+    return None if at is None else at - datetime.now(UTC).timestamp()
+
+
 def _quota_reset_seconds(m: re.Match[str]) -> float:
     value = float(m.group(1))
     return value / 1000.0 if m.group(2).lower() == "ms" else value
@@ -94,6 +118,7 @@ def _resets_in_seconds(m: re.Match[str]) -> Optional[float]:
 # a body carrying both describes a short throttle inside a long quota window, and the
 # shorter explicit wait is the one the provider actually asks for.
 RETRY_DELAY_PATTERNS = (
+    (_REGAIN_ACCESS_AT_RE, _regain_access_seconds),
     (_QUOTA_RESET_DELAY_RE, _quota_reset_seconds),
     (_RETRY_AFTER_SECONDS_RE, lambda m: float(m.group(1))),
     (_RESETS_IN_SECONDS_FIELD_RE, lambda m: float(m.group(1))),
