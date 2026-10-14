@@ -105,7 +105,7 @@ _BILLING_PATTERNS = (
     "credits exhausted", "credits have been exhausted", "requires available credits",
     "account balance is too low", "no usable credits", "top up your credits", "payment required",
     "billing hard limit", "exceeded your current quota", "account is deactivated", "plan does not include",
-    "out of extra usage", "out of funds", "run out of funds", "balance_depleted",
+    "out of extra usage", "specified api usage limits", "out of funds", "run out of funds", "balance_depleted",
     # OpenRouter org-level monthly cap arrives as 403 "Budget limit exceeded (monthly limit)" (#107166):
     # account exhaustion, not a credential problem.
     "budget limit exceeded",
@@ -121,6 +121,10 @@ _BILLING_PATTERNS = (
 # for a content-filter rejection (#82154). Verdict stays ``billing`` but is
 # marked unverified so surfaces hedge and the pool uses a short cooldown.
 _UNVERIFIED_BILLING_PATTERNS = ("out of extra usage",)
+
+# Anthropic org spend cap, HTTP 400 invalid_request_error: "You have reached your specified API
+# usage limits. You will regain access on 2026-11-01 at 00:00 UTC." Confirmed billing.
+_ANTHROPIC_SPEND_LIMIT_PATTERN = "specified api usage limits"
 
 # xAI's Grok credit-exhaustion code arrives as HTTP 403, not 402. Provider-
 # scoped on purpose: other providers' billing codes on a 403 stay auth failures.
@@ -575,6 +579,12 @@ def _billing_hints(error_msg: str) -> Verdict:
     ctx: dict[str, Any] = {}
     if any(p in error_msg for p in _UNVERIFIED_BILLING_PATTERNS):
         ctx = {"billing_unverified": True, "possible_content_filter": True}
+    elif _ANTHROPIC_SPEND_LIMIT_PATTERN in error_msg:
+        # Org spend limit names the instant access returns; the pool benches until then.
+        # An unparseable or past time leaves ctx empty: the normal billing bench applies.
+        from agent.retry_utils import regain_access_at_from_message
+        if (reset_at := regain_access_at_from_message(error_msg)) is not None:
+            ctx = {"reset_at": reset_at}
     return {**_V_BILLING, "error_context": ctx}
 
 
