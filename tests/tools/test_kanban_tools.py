@@ -195,6 +195,34 @@ def test_complete_happy_path(worker_env):
         conn.close()
 
 
+def test_complete_schema_requires_summary_listed_first():
+    """summary is the one field a worker must always send; models treat an
+    optional-looking field as skippable, then the handler rejects the call."""
+    from tools import kanban_tools_schemas as kts
+
+    params = kts.KANBAN_COMPLETE_SCHEMA["parameters"]
+    assert params["required"] == ["summary"]
+    assert next(iter(params["properties"])) == "summary"
+    assert "result" in params["properties"]  # legacy alias still advertised
+
+
+def test_complete_result_only_still_completes(worker_env):
+    """Handler stays backwards compatible: CLI/legacy callers send only result."""
+    from tools import kanban_tools as kt
+    out = kt._handle_complete({"result": "legacy result line"})
+    d = json.loads(out)
+    assert d["ok"] is True
+    assert d["task_id"] == worker_env
+    from hermes_cli import kanban_db as kb
+    from hermes_cli import kanban_db_connect as kbc
+    conn = kbc.connect()
+    try:
+        run = kb.latest_run(conn, worker_env)
+        assert run.outcome == "completed"
+    finally:
+        conn.close()
+
+
 def test_complete_retry_with_empty_created_cards_succeeds(worker_env):
     """After a phantom rejection, retrying kanban_complete with
     created_cards=[] (the documented escape hatch) must complete the

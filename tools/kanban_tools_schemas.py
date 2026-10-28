@@ -92,8 +92,8 @@ KANBAN_COMPLETE_SCHEMA = _schema(
         "Mark your current task done with a structured handoff for others. Prefer ``summary`` for a "
         "human-readable 1-3 sentence description of what you did; put "
         "machine-readable facts in ``metadata`` (changed_files, "
-        "tests_run, decisions, findings, etc). At least one of "
-        "``summary`` or ``result`` is required. If you created new "
+        "tests_run, decisions, findings, etc). ``summary`` is required "
+        "(``result`` is a legacy alias still accepted). If you created new "
         "tasks via ``kanban_create`` during this run, list their ids "
         "in ``created_cards`` — the kernel verifies them so phantom "
         "references are caught before they leak into downstream "
@@ -105,12 +105,12 @@ KANBAN_COMPLETE_SCHEMA = _schema(
         "instead of being a path they have to fetch by hand."
     ),
     {
-        "task_id": _prop("string", _DESC_TASK_ID_DEFAULT),
         "summary": _prop("string", (
                 "Human-readable handoff, 1-3 sentences. Appears in "
                 "Run History on the dashboard and in downstream "
                 "workers' context."
         )),
+        "task_id": _prop("string", _DESC_TASK_ID_DEFAULT),
         "metadata": _prop("object", (
                 "Free-form dict of structured facts about this "
                 "attempt — {\"changed_files\": [...], \"tests_run\": 12, "
@@ -161,7 +161,7 @@ KANBAN_COMPLETE_SCHEMA = _schema(
             ),
         },
     },
-    [],
+    ["summary"],
 )
 
 KANBAN_BLOCK_SCHEMA = _schema(
